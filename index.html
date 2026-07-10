@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Thunder Front 1943 — a browser WW2 combined-arms arcade battler. Fly fighters, drive tanks, capture the point, research new vehicles.">
+<meta name="theme-color" content="#0a0e14">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
+<title>Thunder Front 1943</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0e14; font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; }
+  #app { position: fixed; inset: 0; }
+  canvas.game { display: block; }
+
+  .hud { position: fixed; inset: 0; pointer-events: none; color: #e8eef2; user-select: none; }
+  .hidden { display: none !important; }
+
+  /* ---- top ticket bar ---- */
+  #tickets { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 14px; align-items: center; font-weight: 700; font-size: 20px; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+  #tickets .blue { color: #6fb3ff; }
+  #tickets .red { color: #ff7a6f; }
+  #capbar { position: fixed; top: 44px; left: 50%; transform: translateX(-50%); width: 220px; height: 8px; background: rgba(255,255,255,.15); border-radius: 4px; overflow: hidden; }
+  #capfill { height: 100%; width: 50%; background: #888; transition: width .3s, background .3s; }
+  #capstatus { position: fixed; top: 58px; left: 50%; transform: translateX(-50%); font-size: 12px; letter-spacing: 2px; text-transform: uppercase; opacity: .85; text-shadow: 0 1px 2px #000; }
+
+  /* ---- bottom-left vehicle panel ---- */
+  #vpanel { position: fixed; left: 18px; bottom: 16px; background: rgba(8,12,18,.55); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 10px 14px; min-width: 190px; backdrop-filter: blur(3px); }
+  #vpanel .row { display: flex; justify-content: space-between; gap: 16px; font-size: 14px; line-height: 1.55; }
+  #vpanel .lbl { opacity: .6; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; align-self: center; }
+  #hpbar { margin-top: 6px; height: 7px; background: rgba(255,255,255,.15); border-radius: 4px; overflow: hidden; }
+  #hpfill { height: 100%; width: 100%; background: #6fd96f; transition: width .2s; }
+  #reloadbar { margin-top: 5px; height: 4px; background: rgba(255,255,255,.12); border-radius: 3px; overflow: hidden; }
+  #reloadfill { height: 100%; width: 100%; background: #ffd257; }
+
+  /* ---- crosshair & mouse stick ---- */
+  /* ---- tank sniper scope ---- */
+  #scope { position: fixed; inset: 0; pointer-events: none; }
+  #scopevin { position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 31%, rgba(0,0,0,.5) 36%, rgba(0,0,0,.97) 42%); }
+  #scope .sline { position: absolute; background: rgba(15,20,15,.85); box-shadow: 0 0 1px rgba(0,0,0,.6); }
+  #scope .sline.v { left: 50%; top: 18%; width: 1.5px; height: 64%; transform: translateX(-50%); }
+  #scope .sline.h { top: 50%; left: 18%; height: 1.5px; width: 64%; transform: translateY(-50%); }
+  #scope .sdot { position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; background: rgba(200,60,40,.9); border-radius: 50%; }
+  #scope .stick { position: absolute; left: 50%; width: 9px; height: 1.5px; transform: translateX(-50%); background: rgba(15,20,15,.85); }
+
+  #crosshair { position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 26px; height: 26px; opacity: .95; }
+  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(240,250,255,.9); box-shadow: 0 0 3px #000; }
+  #crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+  #crosshair::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+  #stickdot { position: fixed; left: 50%; top: 50%; width: 14px; height: 14px; border: 2px solid rgba(140,220,120,.95); border-radius: 50%; transform: translate(-50%,-50%); box-shadow: 0 0 4px #000; }
+
+  /* ---- minimap ---- */
+  #minimap { position: fixed; right: 18px; bottom: 16px; width: 190px; height: 190px; border-radius: 8px; border: 1px solid rgba(255,255,255,.15); background: rgba(8,12,18,.5); }
+
+  /* ---- killfeed ---- */
+  #killfeed { position: fixed; right: 18px; top: 70px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; font-size: 13px; text-shadow: 0 1px 2px #000; }
+  #killfeed div { background: rgba(8,12,18,.45); padding: 3px 9px; border-radius: 4px; }
+  #killfeed .blue { color: #8cc3ff; } #killfeed .red { color: #ff9a8f; }
+
+  /* ---- center message ---- */
+  #centermsg { position: fixed; left: 50%; top: 33%; transform: translate(-50%,-50%); font-size: 26px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; color: #ffd257; text-shadow: 0 2px 6px #000; text-align: center; }
+
+  /* ---- controls hint ---- */
+  #hints { position: fixed; left: 18px; top: 14px; font-size: 12px; opacity: .75; line-height: 1.7; text-shadow: 0 1px 2px #000; }
+  #hints b { color: #ffd257; font-weight: 600; }
+
+  /* ---- shared display font stack (self-hosted / system, no network) ---- */
+  :root { --disp: 'Bahnschrift', 'DIN Alternate', 'Oswald', 'Segoe UI Semibold', 'Helvetica Neue', Arial, sans-serif; --accent: #ffd257; }
+
+  /* ---- hangar menu ---- */
+  .menu { position: fixed; inset: 0; display: flex; flex-direction: column; background: radial-gradient(ellipse at 50% 20%, rgba(20,30,45,.72), rgba(5,8,12,.9)); pointer-events: auto; color: #e8eef2; z-index: 10; }
+  #hangartop { display: flex; align-items: center; gap: 20px; padding: 16px 26px; border-bottom: 1px solid rgba(255,255,255,.08); background: rgba(6,10,16,.5); }
+  #hangartop .brand { font-family: var(--disp); font-size: 26px; font-weight: 900; letter-spacing: 4px; text-transform: uppercase; }
+  #hangartop .brand span { color: var(--accent); }
+  .modebtns { display: flex; border: 1px solid rgba(255,255,255,.25); border-radius: 7px; overflow: hidden; }
+  .modebtn { padding: 7px 22px; font-size: 12.5px; letter-spacing: 2px; text-transform: uppercase; background: transparent; color: #cfd8e0; border: none; cursor: pointer; font-weight: 700; font-family: inherit; }
+  .modebtn.active { background: var(--accent); color: #1a2230; }
+  .balances { margin-left: auto; display: flex; gap: 20px; font-family: var(--disp); font-size: 18px; letter-spacing: 1px; }
+  .balances .bl { opacity: .55; font-size: 12px; letter-spacing: 2px; margin-right: 5px; }
+  #rpbal { color: #9fd0ff; } #lionbal { color: var(--accent); }
+  #gearbtn { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.16); color: #e8eef2; width: 40px; height: 40px; border-radius: 8px; cursor: pointer; font-size: 19px; }
+  #gearbtn:hover { border-color: var(--accent); }
+
+  #hangarbody { flex: 1; display: flex; gap: 0; min-height: 0; }
+  #hangarleft { width: 360px; display: flex; flex-direction: column; background: rgba(6,10,16,.55); border-right: 1px solid rgba(255,255,255,.08); }
+  #nationtabs { display: flex; }
+  .nationtab { flex: 1; padding: 12px 0; background: transparent; border: none; border-bottom: 2px solid transparent; color: #b8c2cc; cursor: pointer; font-weight: 700; letter-spacing: 2px; font-size: 12.5px; font-family: inherit; text-transform: uppercase; }
+  .nationtab .nflag { display: block; font-size: 18px; margin-bottom: 3px; }
+  .nationtab.active { color: #fff; border-bottom-color: var(--accent); background: rgba(255,210,87,.06); }
+  #vehlist { flex: 1; overflow-y: auto; padding: 10px 12px; }
+  .branchhdr { font-size: 11px; letter-spacing: 3px; text-transform: uppercase; opacity: .55; margin: 12px 4px 7px; }
+  .branchhdr:first-child { margin-top: 2px; }
+  .vrow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; margin-bottom: 5px; border: 1px solid rgba(255,255,255,.1); border-radius: 7px; background: rgba(255,255,255,.03); color: #e8eef2; cursor: pointer; text-align: left; font-family: inherit; transition: all .12s; }
+  .vrow:hover { border-color: rgba(255,210,87,.6); background: rgba(255,210,87,.08); }
+  .vrow.sel { border-color: var(--accent); background: rgba(255,210,87,.14); }
+  .vrow.locked { opacity: .5; }
+  .vrow.locked .vrowname { color: #97a1aa; }
+  .vrowname { flex: 1; font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tierbadge { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 4px; font-size: 11px; font-weight: 800; color: #10151d; background: #8ea0b0; }
+  .tierbadge.t1 { background: #7fa88a; } .tierbadge.t2 { background: #6fb3d9; }
+  .tierbadge.t3 { background: #c89b5a; } .tierbadge.t4 { background: #d97a6f; }
+  .vtag { font-size: 11px; letter-spacing: .5px; padding: 2px 7px; border-radius: 4px; white-space: nowrap; }
+  .vtag.owned { color: #7fd98a; border: 1px solid rgba(127,217,138,.5); }
+  .vtag.price { color: var(--accent); }
+  .vtag.rp { color: #9fd0ff; }
+  .vtag.locked { opacity: .7; }
+
+  #hangarright { flex: 1; display: flex; align-items: center; justify-content: flex-end; padding: 40px 60px; }
+  #statcard { width: 380px; background: rgba(8,12,18,.66); border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 22px 24px; backdrop-filter: blur(4px); }
+  .cardhead { display: flex; align-items: center; gap: 14px; }
+  .cardflag { font-size: 34px; }
+  .cardname { font-family: var(--disp); font-size: 26px; font-weight: 800; letter-spacing: 1px; }
+  .cardmeta { font-size: 12px; letter-spacing: 1.5px; opacity: .7; text-transform: uppercase; margin-top: 4px; display: flex; align-items: center; gap: 7px; }
+  .carddesc { margin: 14px 0 4px; font-size: 13px; opacity: .7; font-style: italic; }
+  .stats { margin: 16px 0 20px; }
+  .statrow { display: flex; align-items: center; gap: 12px; margin-bottom: 9px; }
+  .statlbl { width: 80px; font-size: 11.5px; letter-spacing: 1.5px; text-transform: uppercase; opacity: .7; }
+  .statbar { flex: 1; height: 8px; background: rgba(255,255,255,.1); border-radius: 4px; overflow: hidden; }
+  .statfill { display: block; height: 100%; background: linear-gradient(90deg, #ffb257, var(--accent)); border-radius: 4px; transition: width .3s; }
+  .bigbtn { width: 100%; padding: 13px; font-size: 15px; letter-spacing: 3px; text-transform: uppercase; border: none; border-radius: 8px; cursor: pointer; font-weight: 800; font-family: inherit; }
+  .bigbtn.deploy { background: var(--accent); color: #1a2230; }
+  .bigbtn.deploy:hover { background: #ffe08a; }
+  .bigbtn.buy { background: #3d5a3f; color: #dfffe4; }
+  .bigbtn.buy:hover { background: #4a6d4c; }
+  .bigbtn.buy.disabled { background: rgba(255,255,255,.07); color: #8a939c; cursor: not-allowed; }
+  .bigbtn.research { background: #2f4a63; color: #cfe6ff; }
+  .bigbtn.research:hover { background: #3a5b78; }
+  .bigbtn.researching { background: rgba(159,208,255,.14); color: #9fd0ff; cursor: default; }
+  .bigbtn.locked { background: rgba(255,255,255,.06); color: #8a939c; cursor: not-allowed; font-size: 12px; }
+
+  #deathinfo { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); font-size: 15px; color: #ff9a8f; letter-spacing: 1px; }
+
+  /* ---- settings panel ---- */
+  #settings { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(4,7,11,.7); }
+  .panel { width: 400px; background: #10161f; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 26px 28px; }
+  .panel h2 { font-family: var(--disp); font-size: 22px; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 18px; }
+  .setrow { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 18px; font-size: 13.5px; letter-spacing: .5px; }
+  .setrow input[type=range] { flex: 1; accent-color: var(--accent); }
+  .setrow input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+  .setrow .setval { width: 46px; text-align: right; color: var(--accent); font-family: var(--disp); }
+  .setrow label { min-width: 120px; }
+  #settingsclose { width: 100%; margin-top: 6px; padding: 11px; background: var(--accent); color: #1a2230; border: none; border-radius: 8px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; cursor: pointer; font-family: inherit; }
+
+  /* ---- results screen ---- */
+  #results { position: fixed; inset: 0; z-index: 15; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 40%, rgba(20,30,45,.9), rgba(4,7,11,.97)); }
+  #results .rwrap { width: 420px; text-align: center; }
+  #resultstitle { font-family: var(--disp); font-size: 52px; font-weight: 900; letter-spacing: 6px; text-transform: uppercase; text-shadow: 0 3px 0 #2a3a50; }
+  #resultssub { font-size: 14px; letter-spacing: 2px; opacity: .65; margin-top: 4px; text-transform: uppercase; }
+  #resultsstats { margin: 26px 0 8px; text-align: left; }
+  .resrow { display: flex; justify-content: space-between; padding: 8px 4px; border-bottom: 1px solid rgba(255,255,255,.08); font-size: 14.5px; letter-spacing: .5px; }
+  .resval { font-family: var(--disp); color: var(--accent); }
+  #resultsresearch { margin: 18px 0 8px; text-align: left; }
+  #resresname { font-size: 12.5px; letter-spacing: 1.5px; text-transform: uppercase; opacity: .8; margin-bottom: 7px; }
+  #resresbar { height: 10px; background: rgba(255,255,255,.1); border-radius: 5px; overflow: hidden; }
+  #resresfill { height: 100%; width: 0; background: linear-gradient(90deg,#6fb3d9,#9fd0ff); }
+  #resultsbtn { margin-top: 26px; padding: 13px 46px; font-size: 16px; letter-spacing: 3px; text-transform: uppercase; background: var(--accent); color: #1a2230; border: none; border-radius: 8px; cursor: pointer; font-weight: 800; font-family: inherit; }
+  #resultsbtn:hover { background: #ffe08a; }
+  .keyhint { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); font-size: 11.5px; opacity: .45; letter-spacing: 1px; text-align: center; line-height: 1.7; }
+  .keyhint b { color: var(--accent); }
+  #warnmsg { position: fixed; left: 50%; top: 22%; transform: translateX(-50%); font-size: 22px; font-weight: 800; letter-spacing: 4px; color: #ff5f4f; text-shadow: 0 2px 6px #000; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="hud" id="hud">
+  <div id="tickets"><span class="blue" id="tblue">500</span><span style="opacity:.5">⚔</span><span class="red" id="tred">500</span></div>
+  <div id="modebadge" class="hidden" style="position:fixed;top:78px;left:50%;transform:translateX(-50%);font-size:10px;letter-spacing:2px;color:#ffd257;border:1px solid rgba(255,210,87,.5);border-radius:4px;padding:2px 8px;text-shadow:0 1px 2px #000;">REALISTIC</div>
+  <div id="capbar"><div id="capfill"></div></div>
+  <div id="capstatus">POINT: NEUTRAL</div>
+  <div id="hints"></div>
+  <div id="vpanel">
+    <div class="row"><span id="vname" style="font-weight:700"></span></div>
+    <div class="row"><span class="lbl">Speed</span><span id="spd">0 km/h</span></div>
+    <div class="row" id="altrow"><span class="lbl">Alt</span><span id="alt">0 m</span></div>
+    <div class="row"><span class="lbl" id="ammolbl">Bombs</span><span id="ammo">4</span></div>
+    <div id="hpbar"><div id="hpfill"></div></div>
+    <div id="reloadbar"><div id="reloadfill"></div></div>
+  </div>
+  <div id="crosshair"></div>
+  <div id="scope" class="hidden">
+    <div id="scopevin"></div>
+    <div class="sline v"></div>
+    <div class="sline h"></div>
+    <div class="stick" style="top:57%"></div>
+    <div class="stick" style="top:61%"></div>
+    <div class="stick" style="top:65%"></div>
+    <div class="sdot"></div>
+  </div>
+  <div id="stickdot" class="hidden"></div>
+  <canvas id="minimap" width="190" height="190"></canvas>
+  <div id="killfeed"></div>
+  <div id="centermsg" class="hidden"></div>
+  <div id="warnmsg" class="hidden">⚠ RETURN TO THE BATTLEFIELD ⚠</div>
+</div>
+
+<div class="menu" id="menu">
+  <div id="hangartop">
+    <div class="brand">THUNDER <span>FRONT</span></div>
+    <div class="modebtns">
+      <button class="modebtn active" id="modearcade">Arcade</button>
+      <button class="modebtn" id="moderealistic">Realistic</button>
+    </div>
+    <div class="balances">
+      <span><span class="bl">RP</span><span id="rpbal">0</span></span>
+      <span><span class="bl">LIONS</span><span id="lionbal">0</span></span>
+    </div>
+    <button id="gearbtn" title="Settings">⚙</button>
+  </div>
+  <div id="hangarbody">
+    <div id="hangarleft">
+      <div id="nationtabs"></div>
+      <div id="vehlist"></div>
+    </div>
+    <div id="hangarright">
+      <div id="statcard"></div>
+    </div>
+  </div>
+  <div id="deathinfo" class="hidden"></div>
+</div>
+
+<div id="settings" class="hidden">
+  <div class="panel">
+    <h2>Settings</h2>
+    <div class="setrow"><label>Master volume</label><input type="range" id="setvol" min="0" max="1" step="0.02"><span class="setval" id="setvolval">80%</span></div>
+    <div class="setrow"><label>Mouse sensitivity</label><input type="range" id="setsens" min="0.3" max="2.5" step="0.05"><span class="setval" id="setsensval">1.00×</span></div>
+    <div class="setrow"><label>Invert Y (planes)</label><input type="checkbox" id="setinvert"></div>
+    <div class="setrow"><label>Shadows</label><input type="checkbox" id="setshadows"></div>
+    <button id="settingsclose">Done</button>
+  </div>
+</div>
+
+<div id="results" class="hidden">
+  <div class="rwrap">
+    <div id="resultstitle">VICTORY</div>
+    <div id="resultssub"></div>
+    <div id="resultsstats"></div>
+    <div id="resultsresearch" class="hidden">
+      <div id="resresname"></div>
+      <div id="resresbar"><div id="resresfill"></div></div>
+    </div>
+    <button id="resultsbtn">Continue</button>
+  </div>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
