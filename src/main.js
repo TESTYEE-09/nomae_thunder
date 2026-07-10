@@ -508,6 +508,8 @@ class Game {
       const dv = this.displayVehicle;
       const plane = dv.kind === 'plane';
       _v1.set(plane ? 16 : 11, plane ? 5 : 5.5, plane ? 24 : 16).add(dv.pos);
+      // snap on the first approach so we don't fly kilometres to the turntable
+      if (this.camPos.distanceTo(_v1) > 400) this.camPos.copy(_v1);
       this.camPos.lerp(_v1, snap ? 1 : 1 - Math.exp(-4 * dt));
       this.camera.position.copy(this.camPos);
       this.camera.up.copy(UP);

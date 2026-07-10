@@ -31,6 +31,7 @@ export class GameAudio {
     this.master = 0.7;          // 0..1, stored on the class
     this.buffers = {};
     this.lastGun = 0;
+    this.lastGunP = 0;
     this.lastBoom = 0;
     this.engine = null;         // player engine (listener-relative)
     this.wind = null;           // player airspeed loop
@@ -177,6 +178,21 @@ export class GameAudio {
       return THREE.MathUtils.clamp(crack + body, -1, 1);
     });
 
+    // ---- per-shot gun cracks: sharp snap + short thump, 3 variants so rapid
+    // fire doesn't phase. Small buffers start instantly — no perceived latency.
+    B.gunCracks = [];
+    for (let v = 0; v < 3; v++) {
+      let lp = 0;
+      B.gunCracks.push(this._buf(0.085, (t) => {
+        const n = Math.random() * 2 - 1;
+        lp += 0.3 * (n - lp);
+        const snap = (n - lp) * Math.exp(-t * 110) * 1.5;   // highpassed attack
+        const body = lp * Math.exp(-t * 35) * 0.9;
+        const thump = Math.sin(2 * Math.PI * (150 - 400 * t) * t) * Math.exp(-t * 45) * 0.9;
+        return THREE.MathUtils.clamp(snap + body + thump, -1, 1);
+      }));
+    }
+
     // ---- engine loops
     B.enginePlane = this._engineBuf(
       45, [1.0, 0.7, 0.5, 0.32, 0.22, 0.16, 0.11, 0.08], 0.5, 0.18);
@@ -265,14 +281,28 @@ export class GameAudio {
 
   // ---------------------------------------------------------------- API (world)
 
-  gun(pos) {
+  gun(pos, isPlayer = false) {
     if (!this.ready) return;
+    const bank = this.buffers.gunCracks;
+    const buf = bank[(Math.random() * bank.length) | 0];
     const now = performance.now();
-    if (now - this.lastGun < 45) return;
+    if (isPlayer) {
+      // player guns: listener-relative raw source, fires the same audio frame —
+      // no positional processing, no distance falloff, no delay
+      if (now - this.lastGunP < 25) return;
+      this.lastGunP = now;
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      src.playbackRate.value = 0.9 + Math.random() * 0.2;
+      const g = this.ctx.createGain();
+      g.gain.value = 0.42;
+      src.connect(g).connect(this.listener.getInput());
+      src.start();
+      return;
+    }
+    if (now - this.lastGun < 50) return;
     this.lastGun = now;
-    const buf = this.buffers.mg || this.buffers.mgFallback;
-    const rate = this.buffers.mg ? 0.95 + Math.random() * 0.1 : 1;
-    this._playAt(buf, pos, { volume: this.buffers.mg ? 0.9 : 0.7, rate, refDistance: 90 });
+    this._playAt(buf, pos, { volume: 0.8, rate: 0.85 + Math.random() * 0.25, refDistance: 90 });
   }
 
   cannon(pos) {

@@ -47,6 +47,8 @@ export class HUD {
 
   update(dt) {
     const g = this.game;
+    // battle HUD only exists in battle — the hangar/results own the screen otherwise
+    this.el.hud.classList.toggle('hidden', g.state === 'menu' || g.state === 'end');
     this.el.tblue.textContent = Math.max(0, Math.ceil(g.tickets.blue));
     this.el.tred.textContent = Math.max(0, Math.ceil(g.tickets.red));
 

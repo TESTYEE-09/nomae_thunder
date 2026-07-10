@@ -32,6 +32,17 @@ export class Hangar {
     this.$('modearcade').addEventListener('click', () => { this.game.setMode(false); this.game.audio.ui('switch'); });
     this.$('moderealistic').addEventListener('click', () => { this.game.setMode(true); this.game.audio.ui('switch'); });
     this.$('gearbtn').addEventListener('click', () => { this.openSettings(); this.game.audio.ui('click'); });
+    this.$('tobattle').addEventListener('click', () => {
+      if (this.progress.status(this.selected.id) === 'owned') {
+        this.game.audio.ui('click');
+        this.game.spawnPlayer(this.selected);
+      } else this.game.audio.ui('hover');
+    });
+  }
+
+  refreshBattleBtn() {
+    const owned = this.progress.status(this.selected.id) === 'owned';
+    this.$('tobattle').classList.toggle('disabled', !owned);
   }
 
   refreshBalances() {
@@ -58,38 +69,36 @@ export class Hangar {
     }
   }
 
-  // ---- vehicle list -------------------------------------------------------
+  // ---- vehicle carousel (WT-style bottom strip) ----------------------------
   renderList() {
-    const list = this.$('vehlist');
-    list.innerHTML = '';
+    const strip = this.$('vehstrip');
+    strip.innerHTML = '';
     const data = this.lines[this.nation];
-    list.appendChild(this.branchHeader('✈ Air Force'));
-    for (const spec of data.air) list.appendChild(this.vehRow(spec));
-    list.appendChild(this.branchHeader('🛡 Ground Forces'));
-    for (const spec of data.ground) list.appendChild(this.vehRow(spec));
+    for (const spec of data.air) strip.appendChild(this.vehCard(spec, '✈'));
+    const div = document.createElement('div');
+    div.className = 'strip-div';
+    strip.appendChild(div);
+    for (const spec of data.ground) strip.appendChild(this.vehCard(spec, '🛡'));
+    this.refreshBattleBtn();
   }
 
-  branchHeader(text) {
-    const h = document.createElement('div');
-    h.className = 'branchhdr';
-    h.textContent = text;
-    return h;
-  }
-
-  vehRow(spec) {
+  vehCard(spec, kindIcon) {
+    const ROMAN = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
     const status = this.progress.status(spec.id);
-    const row = document.createElement('button');
-    row.className = `vrow ${status}` + (spec.id === this.selected.id ? ' sel' : '');
-    let right = '';
-    if (status === 'owned') right = '<span class="vtag owned">OWNED</span>';
-    else if (status === 'unlocked') right = `<span class="vtag price">🦁 ${fmt(spec.price)}</span>`;
-    else if (status === 'researchable') right = `<span class="vtag rp">◆ ${fmt(spec.rpCost)}</span>`;
-    else right = '<span class="vtag locked">🔒</span>';
-    row.innerHTML =
-      `<span class="tierbadge t${spec.tier}">${spec.tier}</span>` +
-      `<span class="vrowname">${spec.name}</span>${right}`;
-    row.addEventListener('click', () => { this.selectVehicle(spec); this.game.audio.ui('click'); });
-    return row;
+    const card = document.createElement('button');
+    card.className = `vcardw ${status}` + (spec.id === this.selected.id ? ' sel' : '');
+    let tag = '';
+    if (status === 'owned') tag = '<span class="vtag owned">OWNED</span>';
+    else if (status === 'unlocked') tag = `<span class="vtag price">🦁 ${fmt(spec.price)}</span>`;
+    else if (status === 'researchable') tag = `<span class="vtag rp">◆ ${fmt(spec.rpCost)}</span>`;
+    else tag = '<span class="vtag locked">🔒</span>';
+    card.innerHTML =
+      `<div class="vcrow1"><span class="vckind">${kindIcon} ${spec.flag}</span>` +
+      `<span class="tierbadge t${spec.tier}">${ROMAN[spec.tier]}</span></div>` +
+      `<div class="vcname">${spec.name}</div>` +
+      `<div class="vcstatus">${tag}</div>`;
+    card.addEventListener('click', () => { this.selectVehicle(spec); this.game.audio.ui('click'); });
+    return card;
   }
 
   selectVehicle(spec) {
@@ -147,6 +156,7 @@ export class Hangar {
       this.refreshBalances();
       this.renderCard(); this.renderList();
     });
+    this.refreshBattleBtn();
   }
 
   // ---- open / close -------------------------------------------------------

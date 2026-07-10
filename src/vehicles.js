@@ -89,56 +89,149 @@ const NATION_PLANE_COLOR = {
   USA: 0x5a6b3f, UK: 0x4f5f45, USSR: 0x4f6b35, Germany: 0x59605f, Japan: 0x707a68,
 };
 
+function makeProp(dark, scale = 1) {
+  const prop = new THREE.Group();
+  for (let i = 0; i < 3; i++) {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.24 * scale, 2.9 * scale, 0.08), dark);
+    blade.rotation.z = i * Math.PI * 2 / 3;
+    blade.position.y = 0;
+    prop.add(blade);
+  }
+  const disc = new THREE.Mesh(
+    new THREE.CircleGeometry(1.5 * scale, 16),
+    new THREE.MeshBasicMaterial({ color: 0x20221f, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false })
+  );
+  prop.add(disc);
+  return prop;
+}
+
+// stacked discs that read as a national roundel from a distance
+const ROUNDEL = {
+  USA: [[0.62, 0x2a4d8f], [0.3, 0xf0f0f0]],
+  UK: [[0.62, 0x2a4d8f], [0.42, 0xf0f0f0], [0.2, 0xc03a2b]],
+  USSR: [[0.62, 0xc03a2b], [0.26, 0xf0f0f0]],
+  Germany: [[0.6, 0xf0f0f0], [0.36, 0x1c1c1c]],
+  Japan: [[0.62, 0xf0f0f0], [0.4, 0xc03a2b]],
+};
+
+function addRoundels(g, nation, x, y, z) {
+  const spec = ROUNDEL[nation] ?? ROUNDEL.USA;
+  for (const side of [-1, 1]) {
+    let h = 0;
+    for (const [r, col] of spec) {
+      h += 0.015;
+      const disc = new THREE.Mesh(
+        new THREE.CylinderGeometry(r, r, 0.02, 12),
+        new THREE.MeshLambertMaterial({ color: col })
+      );
+      disc.position.set(side * x, y + h, z);
+      g.add(disc);
+    }
+  }
+}
+
+// tapered, slightly swept wing half with dihedral
+function wingHalf(mat, span, root, tipChord, side) {
+  const geo = new THREE.BoxGeometry(span, 0.2, root, 6, 1, 1);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const t = (pos.getX(i) + span / 2) / span;      // 0 root -> 1 tip
+    pos.setZ(i, pos.getZ(i) * (1 - (1 - tipChord / root) * t) + t * 0.35); // taper + sweep back
+    pos.setY(i, pos.getY(i) + t * 0.3);             // dihedral
+  }
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, mat);
+  m.position.x = side * span / 2;
+  if (side < 0) m.scale.x = -1;
+  return m;
+}
+
 function buildPlaneMesh(team, spec) {
   const g = new THREE.Group();
   const body = new THREE.MeshLambertMaterial({ color: NATION_PLANE_COLOR[spec.nation] ?? 0x5a6b3f });
   const accent = new THREE.MeshLambertMaterial({ color: TEAM_COLOR[team] });
   const dark = new THREE.MeshLambertMaterial({ color: 0x2a2d2a });
+  const props = [];
 
-  const fus = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.8, 6.2, 8), body);
-  fus.rotation.x = Math.PI / 2;
+  // fuselage: lathe profile, nose at -Z
+  const pts = [
+    new THREE.Vector2(0.04, 4.7), new THREE.Vector2(0.42, 4.2), new THREE.Vector2(0.72, 3.2),
+    new THREE.Vector2(0.85, 1.6), new THREE.Vector2(0.82, 0.2), new THREE.Vector2(0.6, -1.6),
+    new THREE.Vector2(0.34, -3.0), new THREE.Vector2(0.12, -3.6),
+  ];
+  const fusGeo = new THREE.LatheGeometry(pts, 12);
+  fusGeo.rotateX(-Math.PI / 2);
+  const fus = new THREE.Mesh(fusGeo, body);
   g.add(fus);
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.8, 1.6, 8), body);
-  nose.rotation.x = -Math.PI / 2;
-  nose.position.z = -3.9;
-  g.add(nose);
 
-  const wing = new THREE.Mesh(new THREE.BoxGeometry(11, 0.22, 2.3), body);
-  wing.position.set(0, -0.15, -0.5);
-  g.add(wing);
+  // wings
+  const halfSpan = 5.2;
   for (const side of [-1, 1]) {
-    const tip = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.24, 2.3), accent);
-    tip.position.set(side * 4.9, -0.15, -0.5);
+    const w = wingHalf(body, halfSpan, 2.4, 1.1, side);
+    w.position.set(side * 0.4 + w.position.x * 0, -0.25, -0.5);
+    w.position.x = side * halfSpan / 2 + side * 0.35;
+    g.add(w);
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.22, 1.1), accent);
+    tip.position.set(side * (halfSpan + 0.55), 0.02, -0.35);
     g.add(tip);
   }
-  const hstab = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.18, 1.3), body);
-  hstab.position.set(0, 0.1, 2.8);
+  addRoundels(g, spec.nation, 3.4, -0.1, -0.5);
+
+  // tail
+  const hstab = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.16, 1.2), body);
+  hstab.position.set(0, 0.15, 2.9);
   g.add(hstab);
-  const vstab = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.6, 1.4), accent);
-  vstab.position.set(0, 0.9, 2.9);
+  const vGeo = new THREE.BoxGeometry(0.16, 1.7, 1.5);
+  const vp = vGeo.attributes.position;
+  for (let i = 0; i < vp.count; i++) {
+    const t = (vp.getY(i) + 0.85) / 1.7;
+    vp.setZ(i, vp.getZ(i) * (1 - 0.45 * t) + t * 0.5);
+  }
+  vGeo.computeVertexNormals();
+  const vstab = new THREE.Mesh(vGeo, accent);
+  vstab.position.set(0, 1.0, 3.1);
   g.add(vstab);
-  const canopy = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.55, 1.6), new THREE.MeshLambertMaterial({ color: 0x88bbdd }));
-  canopy.position.set(0, 0.6, -0.6);
+
+  // bubble canopy
+  const canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(0.55, 10, 8),
+    new THREE.MeshLambertMaterial({ color: 0x8fc0e0, transparent: true, opacity: 0.85 })
+  );
+  canopy.scale.set(0.85, 0.75, 1.7);
+  canopy.position.set(0, 0.72, -0.4);
   g.add(canopy);
 
-  const prop = new THREE.Group();
-  for (let i = 0; i < 2; i++) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.28, 3.4, 0.1), dark);
-    blade.rotation.z = i * Math.PI / 2;
-    prop.add(blade);
+  if (spec.twin) {
+    // twin-engine: nacelles on the wings, no nose prop
+    for (const side of [-1, 1]) {
+      const nac = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 2.6, 8), body);
+      nac.rotation.x = Math.PI / 2;
+      nac.position.set(side * 2.5, -0.15, -1.2);
+      g.add(nac);
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.8, 8), dark);
+      cone.rotation.x = -Math.PI / 2;
+      cone.position.set(side * 2.5, -0.15, -2.75);
+      g.add(cone);
+      const prop = makeProp(dark, 0.75);
+      prop.position.set(side * 2.5, -0.15, -3.0);
+      g.add(prop);
+      props.push(prop);
+    }
+  } else {
+    const spinner = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.9, 8), dark);
+    spinner.rotation.x = -Math.PI / 2;
+    spinner.position.z = -4.85;
+    g.add(spinner);
+    const prop = makeProp(dark, 1.1);
+    prop.position.z = -4.95;
+    g.add(prop);
+    props.push(prop);
   }
-  // faint disc to read as a spinning prop
-  const disc = new THREE.Mesh(
-    new THREE.CircleGeometry(1.7, 16),
-    new THREE.MeshBasicMaterial({ color: 0x20221f, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false })
-  );
-  prop.add(disc);
-  prop.position.z = -4.75;
-  g.add(prop);
+
   // attackers read as bigger, beefier airframes
-  if (spec.bombs >= 4) g.scale.setScalar(1.18);
+  if (spec.bombs >= 4 || spec.twin) g.scale.setScalar(1.18);
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  return { mesh: g, prop };
+  return { mesh: g, props };
 }
 
 export class Plane extends Vehicle {
@@ -148,9 +241,9 @@ export class Plane extends Vehicle {
     this.spec = spec ?? PLANES.find((s) => s.team === team);
     this.maxHp = this.hp = this.spec.hp;
     this.radius = this.spec.bombs >= 4 ? 5.2 : 4.5;
-    const { mesh, prop } = buildPlaneMesh(team, this.spec);
+    const { mesh, props } = buildPlaneMesh(team, this.spec);
     this.group.add(mesh);
-    this.prop = prop;
+    this.props = props;
 
     this.speed = 90;
     this.minSpeed = this.spec.minSpeed;
@@ -191,7 +284,7 @@ export class Plane extends Vehicle {
     this.vel.y -= sink;
     this.pos.addScaledVector(this.vel, dt);
 
-    this.prop.rotation.z += dt * (10 + this.throttle * 40);
+    for (const pr of this.props) pr.rotation.z += dt * (10 + this.throttle * 40);
 
     // wingtip vapor trails when pulling G (hard maneuver) or streaking low & fast
     const gLoad = Math.abs(c.pitch) + Math.abs(c.roll) * 0.5;
@@ -220,7 +313,7 @@ export class Plane extends Vehicle {
       _v2.set(0, -0.1, -4).applyQuaternion(q).add(this.pos);
       _v1.set(0, 0, -1).applyQuaternion(q);
       this.game.effects.muzzleFlash(_v2, _v1, 0.7);
-      this.game.audio.gun(this.pos);
+      this.game.audio.gun(this.pos, this.isPlayer);
     }
 
     // bombs
@@ -405,7 +498,7 @@ export class Tank extends Vehicle {
         .normalize().applyQuaternion(_q2);
       this.game.projectiles.spawnBullet(this, _v1, _v2, this.spec.mgDmg ?? 7);
       this.game.effects.muzzleFlash(_v1, _v2, 0.4);
-      this.game.audio.gun(this.pos);
+      this.game.audio.gun(this.pos, this.isPlayer);
     }
 
     this.vel.set(fx * this.speed, 0, fz * this.speed);
